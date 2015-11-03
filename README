@@ -1,0 +1,47 @@
+RQ: Better living through asynchronicity
+
+With RQ, a workflow is broken into a set of steps or tasks or jobs. Each step is represented by a function. These functions are called requestors because calling one is likely to initiate a request. RQ provides services that can collect some requestors together and process them sequentially or in parallel.
+##RQ中的一个完整工作流可以分解成为若干的子任务，每个子任务可以用一个函数表示；这些函数也可以被叫做“请求者”（requestor），因为调用一个函数就好比初始化一个请求一样。RQ提供串行或者并行的处理方式来处理这些请求。
+
+For example, the respond requestor will call the getId requestor, give that result to the getPreference requestor, and give that result to the getStuff requestor. The buildPage requestor will use the stuff to build a page.
+##举个例子如下，在串行方式下，respond（响应）“模块”将调用getId“子任务”并将结果给到getPreference“子任务”，然后传值给getStuff“子任务”，再由buildPage“子任务”将结果做成页面。
+respond = RQ.sequence([
+    getId,
+    getPreference,
+    getStuff,
+    buildPage,
+]);
+
+The getStuff requestor that was used above will produce an array of stuff, and it can get all of the stuff in parallel. It will begin the getNav, getAds, getWeather, and getMessageOfTheDay jobs, and also begin getHoroscope and getGossip. Those last two are considered unimportant. If they can be finished before the four main jobs finish, then they will be included in the result. But we won't wait for them.
+##例子中使用的getStuff“任务”会产生一个stuff（子任务）数组如下，所有的stuff（子任务）：getNav, getAds, getWeather, getMessageOfTheDay, getHoroscope 和getGossip以并行的方式同时开始执行，但是后面的getHoroscope和getGossip被认为不是重要的（子任务）不一定要等到他们执行完；除非这2个次要stuff（子任务）能在上述4个主要stuff（子任务）完成之前取得结果，这样getHoroscope和getGossip的结果才能被包含在最终结果中。
+getStuff = RQ.parallel([
+    getNav,
+    getAds,
+    getWeather,
+    getMessageOfTheDay
+], [
+    getHoroscope,
+    getGossip
+]);
+
+RQ can also support races, where several jobs are started at once and the first one to finish successfully wins. We could have created the getAds requestor that was used above like this:
+##RQ也能支持竞赛方式。比如说几个任务同时开始，采用最先完成的任务结果，就像我们下面的getAds“请求者”一样：
+getAds = RQ.race([
+    getAd(adnet.klikHaus),
+    getAd(adnet.inUFace),
+    getAd(adnet.trackPipe)
+]);
+
+getAd is a factory function that makes requestors. getAd takes a parameter that identifies an advertising network. In this example, requests will be made of three advertising networks. The first to provide an acceptable response will win.
+##getAd 是生产“请求者”的工厂函数，它有一个标识网络广告的参数，在上面的例子中，3个网络广告的请求都会被同时处理，取最先完成的请求做最终结果。
+
+RQ can also support fallbacks. If Plan A fails, try Plan B. And if that fails, Plan C. The getWeather requestor that was used above could have been made as a fallback. It would first try to get a result from the local cache. If that fails, it will try the local database. If that fails, it will try the remote database.
+##RQ还支持备胎方式。如果A计划失败则尝试B计划，若是B计划再失败则尝试C计划。下面的getWeather“任务”就是采用的备胎方式。它首先从本地缓存获取结果，倘若失败则从本地数据库获取结果，如果那样也失败的话，就从远程服务器获取结果。
+getWeather = RQ.fallback([
+    fetch("weather", localCache),
+    fetch("weather", localDB),
+    fetch("weather", remoteDB)
+]);
+
+RQ provides just four functions: RQ.sequence, RQ.parallel, RQ.race, and RQ.fallback. Each takes an array of requestors and returns a requestor that combines them into a unit. Each can also take an optional time limit which can cancel the jobs and produce an early failure if time runs out.
+##RQ提供4个函数：串行函数RQ.sequence，并行函数RQ.parallel，竞争函数RQ.race, 备胎函数RQ.fallback。每个函数都可以传人“请求者”组成的数组并返回一个这些“请求者”的结果集。每个函数可以传人一个时间参数来做超时处理，一旦超时就能够取消任务，提前结束。
